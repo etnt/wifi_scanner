@@ -161,6 +161,7 @@ handle_connection(ConnSock) ->
             Response = [
                 "HTTP/1.1 200 OK\r\n",
                 "Content-Type: application/json\r\n",
+                "Access-Control-Allow-Origin: *\r\n",
                 "Connection: close\r\n",
                 "Content-Length: ", integer_to_list(iolist_size(Body)), "\r\n",
                 "\r\n",

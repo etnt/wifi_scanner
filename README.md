@@ -99,7 +99,23 @@ Example response:
 }
 ```
 
+## Visualization
+
+A standalone HTML/JS page (`viz/index.html`) fetches scan results and draws
+APs as bell curves on a channel spectrum chart.
+
+<a href="wifi-scanner.jpg"><img src="wifi-scanner.jpg" width="400"></a>
+
+Serve locally and open in a browser:
+
+```bash
+cd viz && python3 -m http.server 3000
+# open http://localhost:3000
+```
+
 ## Roadmap
 
 - [x] Step 1: WiFi scanning with serial console output
 - [x] Step 2: HTTP API for remote polling
+- [x] Step 3: Add visualization
+- [ ] Step 4: Display obtained IP address in TFT display
