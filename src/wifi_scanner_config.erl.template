@@ -1,0 +1,12 @@
+-module(wifi_scanner_config).
+
+-export([get_config/0]).
+
+get_config() ->
+    [
+        {sta, #{
+            ssid => <<"YOUR_SSID">>,
+            psk => <<"YOUR_PASSWORD">>
+        }},
+        {scan_interval, 5000}   %% ms between scans
+    ].

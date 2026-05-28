@@ -1,0 +1,10 @@
+{application, wifi_scanner, [
+    {description, "WiFi scanner for ESP32-S3 on AtomVM"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [kernel, stdlib]},
+    {env, [
+        {scan_interval, 30000},
+        {show_hidden, true}
+    ]}
+]}.
