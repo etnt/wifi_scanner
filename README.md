@@ -1,15 +1,27 @@
 # WiFi Scanner — ESP32-S3 + AtomVM
 
 A WiFi network scanner for ESP32-S3 running on [AtomVM](https://github.com/atomvm/AtomVM).
-Periodically scans for nearby access points and prints results to the serial console.
+Periodically scans for nearby access points, caches results with TTL-based
+eviction, prints to serial console, and serves them as JSON over HTTP.
 
 ## Project Structure
 
 ```
 src/
-  wifi_scanner.erl                  - AtomVM entrypoint, scan loop, console output
+  wifi_scanner.erl                  - AtomVM entrypoint, network, HTTP server, scanner loop
+  wifi_scanner_cache.erl            - AP cache with TTL eviction, JSON export, console display
   wifi_scanner_config.erl.template  - Config template (copy and fill in credentials)
   wifi_scanner.app.src              - Application resource file
+```
+
+## Prerequisites
+
+Install the `esptool.py` like this:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ## Configuration
@@ -25,11 +37,9 @@ Then edit `src/wifi_scanner_config.erl`:
 ```erlang
 get_config() ->
     [
-        {sta, #{
-            ssid => <<"YOUR_SSID">>,
-            psk => <<"YOUR_PASSWORD">>
-        }},
-        {scan_interval, 30000}   %% ms between scans
+        {sta, [{ssid, <<"YOUR_SSID">>}, {psk, <<"YOUR_PASSWORD">>}]},
+        {scan_interval, 5000},   %% ms between scans
+        {http_port, 8080}
     ].
 ```
 
@@ -56,19 +66,40 @@ esptool.py --chip auto --port /dev/cu.usbmodem5B414826621 --baud 115200 \
 minicom -D /dev/cu.usbmodem5B414826621 -b 115200
 ```
 
-Example output:
+Example console output:
 
 ```
-========== WiFi Scan Results ==========
-SSID                             CH   RSSI   Auth
-------------------------------------------------------------
-MyNetwork                        6    -42    WPA2
-Neighbor                         11   -71    WPA/WPA2
-FreeWifi                         1    -83    OPEN
+========== WiFi Scan Results (12) ==========
+SSID                             CH   RSSI   Auth       Quality    TTL
+---------------------------------------------------------------------------
+MyNetwork                        6    -42    WPA2       Excellent  5/5
+Neighbor                         11   -71    WPA/WPA2   Good       4/5
+FreeWifi                         1    -83    OPEN       Fair       5/5
 ========================================
+```
+
+## HTTP API
+
+Once connected to WiFi, the ESP32 serves scan results as JSON:
+
+```bash
+curl http://<ESP32_IP>:8080/
+```
+
+Example response:
+
+```json
+{
+  "count": 3,
+  "networks": [
+    {"ssid": "MyNetwork", "channel": 6, "rssi": -42, "authmode": "wpa2_psk", "quality": "Excellent", "ttl": 5},
+    {"ssid": "Neighbor", "channel": 11, "rssi": -71, "authmode": "wpa_wpa2_psk", "quality": "Good", "ttl": 4},
+    {"ssid": "FreeWifi", "channel": 1, "rssi": -83, "authmode": "open", "quality": "Fair", "ttl": 5}
+  ]
+}
 ```
 
 ## Roadmap
 
 - [x] Step 1: WiFi scanning with serial console output
-- [ ] Step 2: HTTP API (`GET /api/scan`) for remote polling
+- [x] Step 2: HTTP API for remote polling

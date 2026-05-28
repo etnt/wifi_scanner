@@ -4,9 +4,12 @@
 
 get_config() ->
     [
-        {sta, #{
-            ssid => <<"YOUR_SSID">>,
-            psk => <<"YOUR_PASSWORD">>
-        }},
-        {scan_interval, 5000}   %% ms between scans
+        {sta, [
+            {ssid, <<"YOUR_SSID">>},
+            {psk, <<"YOUR_PASSWORD">>},
+            managed,
+            {disconnected, fun() -> ok end}
+        ]},
+        {scan_interval, 5000},  %% ms between scans
+        {http_port, 8080}
     ].
