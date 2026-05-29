@@ -115,7 +115,7 @@ A standalone HTML/JS page (`viz/index.html`) fetches scan results and draws
 APs as bell curves on a channel spectrum chart. Below the chart, a map shows
 the device's estimated location (determined via Apple's WiFi Positioning System).
 
-<a href="wifi-scanner.png"><img src="wifi-scanner.png" width="600"></a>
+<a href="wifi-scanner.jpg"><img src="wifi-scanner.jpg" width="600"></a>
 
 Goto: [https://etnt.github.io/wifi_scanner/](https://etnt.github.io/wifi_scanner/)
 
