@@ -35,6 +35,8 @@ wait_and_start_http(Port, Interval) ->
             io:format("wifi_scanner: got IP: ~s~n", [format_ip(Info)]),
             ok = start_http(Port),
             io:format("wifi_scanner: try: curl http://~s:~p/~n", [format_ip(Info), Port]),
+            %% Display IP on LCD1602
+            display_ip(Info),
             %% Start scanner after HTTP is up
             Pid = spawn(fun() -> scanner_init(Interval) end),
             register(wifi_scanner_proc, Pid),
@@ -222,6 +224,23 @@ start_network(Config) ->
         {error, Reason} ->
             io:format("wifi_scanner: network start failed: ~p~n", [Reason]),
             {error, Reason}
+    end.
+
+%%%===================================================================
+%%% LCD Display — show IP address on LCD1602 via I2C
+%%%===================================================================
+
+display_ip(Info) ->
+    io:format("wifi_scanner: initializing LCD1602 (SDA=8, SCL=9)~n"),
+    case lcd1602:start(#{sda => 8, scl => 9}) of
+        {ok, LCD} ->
+            IpStr = lists:flatten(format_ip(Info)),
+            lcd1602:clear(LCD),
+            lcd1602:write_string(LCD, 0, 0, "WiFi Scanner"),
+            lcd1602:write_string(LCD, 1, 0, IpStr),
+            io:format("wifi_scanner: LCD showing IP: ~s~n", [IpStr]);
+        {error, Reason} ->
+            io:format("wifi_scanner: LCD init failed: ~p~n", [Reason])
     end.
 
 %%%===================================================================

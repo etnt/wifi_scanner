@@ -4,15 +4,7 @@ A WiFi network scanner for ESP32-S3 running on [AtomVM](https://github.com/atomv
 Periodically scans for nearby access points, caches results with TTL-based
 eviction, prints to serial console, and serves them as JSON over HTTP.
 
-## Project Structure
-
-```
-src/
-  wifi_scanner.erl                  - AtomVM entrypoint, network, HTTP server, scanner loop
-  wifi_scanner_cache.erl            - AP cache with TTL eviction, JSON export, console display
-  wifi_scanner_config.erl.template  - Config template (copy and fill in credentials)
-  wifi_scanner.app.src              - Application resource file
-```
+An optional LCD display may be used to display the obtained IP address.
 
 ## Prerequisites
 
@@ -54,6 +46,7 @@ rebar3 atomvm packbeam
 ## Flash
 
 ```bash
+# Example (your port may differ)
 esptool.py --chip auto --port /dev/cu.usbmodem5B414826621 --baud 115200 \
            --before default_reset --after hard_reset write_flash -u \
            --flash_mode keep --flash_freq keep --flash_size detect 0x250000 \
@@ -63,12 +56,23 @@ esptool.py --chip auto --port /dev/cu.usbmodem5B414826621 --baud 115200 \
 ## Monitor (minicom)
 
 ```bash
+# Example (your port may differ)
 minicom -D /dev/cu.usbmodem5B414826621 -b 115200
 ```
 
-Example console output:
+Example console output (note the obtained IP address):
 
 ```
+...
+wifi_scanner: got IP: 192.168.1.115
+wifi_scanner: waiting for connection...
+wifi_scanner: HTTP listening on port 8080
+wifi_scanner: try: curl http://192.168.1.115:8080/
+wifi_scanner: initializing LCD1602 (SDA=8, SCL=9)
+I (5747) i2c_driver: I2C driver installed using I2C port 0
+wifi_scanner: LCD showing IP: 192.168.1.115
+wifi_scanner: scanner started, interval=5000 ms
+...
 ========== WiFi Scan Results (12) ==========
 SSID                             CH   RSSI   Auth       Quality    TTL
 ---------------------------------------------------------------------------
@@ -106,16 +110,39 @@ APs as bell curves on a channel spectrum chart.
 
 <a href="wifi-scanner.jpg"><img src="wifi-scanner.jpg" width="400"></a>
 
-Serve locally and open in a browser:
+Goto: [https://etnt.github.io/wifi_scanner/](https://etnt.github.io/wifi_scanner/)
+
+or serve locally and open in a browser:
 
 ```bash
 cd viz && python3 -m http.server 3000
 # open http://localhost:3000
 ```
 
+## LCD Display
+
+A Freenove LCD1602 display (HD44780 with PCF8574 I2C backpack) shows the
+obtained IP address after connecting to WiFi.
+
+### Wiring
+
+| LCD Module | ESP32-S3 |
+|------------|----------|
+| GND        | GND      |
+| VCC        | 5V       |
+| SDA        | GPIO 8   |
+| SCL        | GPIO 9   |
+
+The PCF8574 backpack is at I2C address `0x27`. The contrast can be adjusted
+with the blue potentiometer on the back of the module.
+
+<a href="wifi-scanner-display.jpg"><img src="wifi-scanner-display.jpg" width="400"></a>
+
 ## Roadmap
 
 - [x] Step 1: WiFi scanning with serial console output
 - [x] Step 2: HTTP API for remote polling
 - [x] Step 3: Add visualization
-- [ ] Step 4: Display obtained IP address in TFT display
+- [x] Step 4: Display obtained IP address on LCD1602 via I2C
+
+
