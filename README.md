@@ -3,6 +3,8 @@
 A WiFi network scanner for ESP32-S3 running on [AtomVM](https://github.com/atomvm/AtomVM).
 Periodically scans for nearby access points, caches results with TTL-based
 eviction, prints to serial console, and serves them as JSON over HTTP.
+Determines device location via Apple's WiFi Positioning System (WPS) using
+visible BSSIDs.
 
 An optional LCD display may be used to display the obtained IP address.
 
@@ -99,16 +101,21 @@ Example response:
     {"ssid": "MyNetwork", "channel": 6, "rssi": -42, "authmode": "wpa2_psk", "quality": "Excellent", "ttl": 5},
     {"ssid": "Neighbor", "channel": 11, "rssi": -71, "authmode": "wpa_wpa2_psk", "quality": "Good", "ttl": 4},
     {"ssid": "FreeWifi", "channel": 1, "rssi": -83, "authmode": "open", "quality": "Fair", "ttl": 5}
-  ]
+  ],
+  "location": {"lat": 59.328228, "lng": 18.055349, "accuracy": 21}
 }
 ```
+
+The `location` field is included once geolocation has been determined (requires
+at least 3 visible APs). It is omitted if geolocation has not yet completed.
 
 ## Visualization
 
 A standalone HTML/JS page (`viz/index.html`) fetches scan results and draws
-APs as bell curves on a channel spectrum chart.
+APs as bell curves on a channel spectrum chart. Below the chart, a map shows
+the device's estimated location (determined via Apple's WiFi Positioning System).
 
-<a href="wifi-scanner.jpg"><img src="wifi-scanner.jpg" width="400"></a>
+<a href="wifi-scanner.png"><img src="wifi-scanner.png" width="600"></a>
 
 Goto: [https://etnt.github.io/wifi_scanner/](https://etnt.github.io/wifi_scanner/)
 
@@ -138,11 +145,28 @@ with the blue potentiometer on the back of the module.
 
 <a href="wifi-scanner-display.jpg"><img src="wifi-scanner-display.jpg" width="400"></a>
 
+## Geolocation
+
+The device determines its location by querying Apple's WiFi Positioning System
+(WPS) with the BSSIDs of visible access points. This is done over HTTPS to
+`gs-loc.apple.com` using a protobuf-encoded request.
+
+- Requires at least 3 visible APs
+- Re-queries only when >50% of visible BSSIDs change (i.e. the device has moved)
+- Location (lat/lng/accuracy) is included in the HTTP API response and shown on
+  the map in the visualization page
+
+The implementation uses:
+- `apple_wps.erl` — protobuf encode/decode + Apple WPS protocol
+- `https_client.erl` — minimal HTTPS POST client (TLS via AtomVM's ssl module)
+- `aprotobuf` — lightweight protobuf library for AtomVM
+
 ## Roadmap
 
 - [x] Step 1: WiFi scanning with serial console output
 - [x] Step 2: HTTP API for remote polling
 - [x] Step 3: Add visualization
 - [x] Step 4: Display obtained IP address on LCD1602 via I2C
+- [x] Step 5: Geolocation via Apple WPS (WiFi Positioning System)
 
 

@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WiFi Scanner — Channel Spectrum</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -103,6 +105,28 @@ canvas {
     margin-top: 10px;
     font-size: 13px;
 }
+#map-section {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 20px;
+}
+#map-section h2 {
+    font-size: 1.1em;
+    color: #aaa;
+    margin-bottom: 8px;
+}
+#map {
+    width: 100%;
+    height: 350px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    background: #2a2a4a;
+}
+#map-status {
+    font-size: 12px;
+    color: #888;
+    margin-top: 6px;
+}
 </style>
 </head>
 <body>
@@ -122,6 +146,12 @@ canvas {
 
 <div id="error"></div>
 
+<div id="map-section">
+    <h2>Device Location</h2>
+    <div id="map"></div>
+    <div id="map-status">Waiting for location data...</div>
+</div>
+
 <script>
 const COLORS = [
     '#ff8c00', '#4cdf4c', '#6cb4ee', '#c77dff', '#00cccc',
@@ -138,6 +168,9 @@ const CHANNEL_FREQ = {
 let fetchInterval = null;
 let networks = [];
 let hiddenSSIDs = new Set(); // SSIDs the user has unchecked
+let map = null;
+let marker = null;
+let accuracyCircle = null;
 
 function startFetching() {
     const input = document.getElementById('ip-input');
@@ -164,6 +197,7 @@ async function fetchData(addr) {
         status.textContent = `${networks.length} APs — ${new Date().toLocaleTimeString()}`;
         clearError();
         draw();
+        updateMap(data.location);
     } catch (e) {
         status.textContent = 'error';
         showError(`Fetch failed: ${e.message}. Ensure ESP32 is reachable and CORS is allowed.`);
@@ -362,6 +396,57 @@ function escHtml(str) {
 document.getElementById('ip-input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') startFetching();
 });
+
+// --- Map ---
+function initMap(lat, lng) {
+    map = L.map('map').setView([lat, lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+    }).addTo(map);
+}
+
+function updateMap(location) {
+    const mapStatus = document.getElementById('map-status');
+    if (!location || location.lat === undefined || location.lng === undefined) {
+        mapStatus.textContent = 'Waiting for location data...';
+        return;
+    }
+
+    const lat = location.lat;
+    const lng = location.lng;
+    const acc = location.accuracy || 0;
+
+    mapStatus.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)} — accuracy: ${acc}m`;
+
+    if (!map) {
+        initMap(lat, lng);
+    }
+
+    const latlng = [lat, lng];
+
+    if (marker) {
+        marker.setLatLng(latlng);
+    } else {
+        marker = L.marker(latlng).addTo(map);
+        marker.bindPopup('Device Location').openPopup();
+    }
+
+    if (accuracyCircle) {
+        accuracyCircle.setLatLng(latlng);
+        accuracyCircle.setRadius(acc);
+    } else {
+        accuracyCircle = L.circle(latlng, {
+            radius: acc,
+            color: '#4cdf4c',
+            fillColor: '#4cdf4c',
+            fillOpacity: 0.15,
+            weight: 1
+        }).addTo(map);
+    }
+
+    map.setView(latlng, map.getZoom());
+}
 </script>
 
 </body>

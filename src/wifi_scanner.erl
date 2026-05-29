@@ -90,19 +90,26 @@ main_loop(Port) ->
 
 scanner_init(Interval) ->
     erlang:send_after(3000, self(), do_scan),
-    scanner_loop(Interval, wifi_scanner_cache:new()).
+    scanner_loop(Interval, wifi_scanner_cache:new(), #{location => undefined, bssids => []}).
 
-scanner_loop(Interval, Cache) ->
+scanner_loop(Interval, Cache, GeoState) ->
     receive
         do_scan ->
             ScanResults = do_wifi_scan(),
             Cache1 = wifi_scanner_cache:update(ScanResults, Cache),
             wifi_scanner_cache:print(Cache1),
+            GeoState1 = maybe_geolocate(ScanResults, GeoState),
             erlang:send_after(Interval, self(), do_scan),
-            scanner_loop(Interval, Cache1);
+            scanner_loop(Interval, Cache1, GeoState1);
         {get_results, From} ->
-            From ! {results, wifi_scanner_cache:to_json_map(Cache)},
-            scanner_loop(Interval, Cache)
+            Location = maps:get(location, GeoState, undefined),
+            JsonMap = wifi_scanner_cache:to_json_map(Cache),
+            Result = case Location of
+                undefined -> JsonMap;
+                Loc -> maps:put(location, Loc, JsonMap)
+            end,
+            From ! {results, Result},
+            scanner_loop(Interval, Cache, GeoState)
     end.
 
 %%%===================================================================
@@ -143,22 +150,18 @@ start_http(Port) ->
 
 %% Blocking accept loop — spawns a new acceptor for each connection.
 accept_loop(ListenSock) ->
-    io:format("wifi_scanner: waiting for connection...~n"),
     case socket:accept(ListenSock) of
         {ok, ConnSock} ->
-            io:format("wifi_scanner: connection accepted!~n"),
             spawn(fun() -> accept_loop(ListenSock) end),
             handle_connection(ConnSock);
-        {error, AcceptErr} ->
-            io:format("wifi_scanner: accept error: ~p~n", [AcceptErr]),
+        {error, _AcceptErr} ->
             accept_loop(ListenSock)
     end.
 
 %% Read the HTTP request (we ignore the content) and reply with JSON.
 handle_connection(ConnSock) ->
     case socket:recv(ConnSock, 0, 5000) of
-        {ok, Data} ->
-            io:format("wifi_scanner: received ~p bytes~n", [byte_size(Data)]),
+        {ok, _Data} ->
             Body = build_json_response(),
             Response = [
                 "HTTP/1.1 200 OK\r\n",
@@ -171,8 +174,7 @@ handle_connection(ConnSock) ->
             ],
             socket:send(ConnSock, iolist_to_binary(Response)),
             socket:close(ConnSock);
-        {error, RecvErr} ->
-            io:format("wifi_scanner: recv error: ~p~n", [RecvErr]),
+        {error, _RecvErr} ->
             socket:close(ConnSock)
     end.
 
@@ -266,3 +268,42 @@ do_wifi_scan() ->
             io:format("wifi_scanner: scan failed: ~p~n", [Reason]),
             []
     end.
+
+%%%===================================================================
+%%% Geolocation — queries Apple WPS when visible BSSIDs change
+%%%===================================================================
+
+%% Only re-query if >50% of BSSIDs are new since last query.
+maybe_geolocate(ScanResults, GeoState) ->
+    CurrentBSSIDs = [maps:get(bssid, N) || N <- ScanResults,
+                     maps:is_key(bssid, N)],
+    PrevBSSIDs = maps:get(bssids, GeoState, []),
+    case bssids_changed(CurrentBSSIDs, PrevBSSIDs) orelse
+         maps:get(location, GeoState) =:= undefined of
+        true when length(CurrentBSSIDs) >= 3 ->
+            APs = [#{bssid => B, rssi => maps:get(rssi, N, -70)}
+                   || N <- ScanResults,
+                      B <- [maps:get(bssid, N, undefined)],
+                      B =/= undefined],
+            io:format("wifi_scanner: querying geolocation (~p APs)~n",
+                      [length(APs)]),
+            case apple_wps:locate(APs) of
+                {ok, Location} ->
+                    io:format("wifi_scanner: location: ~p, ~p (acc ~p m)~n",
+                              [maps:get(lat, Location),
+                               maps:get(lng, Location),
+                               maps:get(accuracy, Location)]),
+                    #{location => Location, bssids => CurrentBSSIDs};
+                {error, Reason} ->
+                    io:format("wifi_scanner: geolocation failed: ~p~n", [Reason]),
+                    GeoState#{bssids => CurrentBSSIDs}
+            end;
+        _ ->
+            GeoState#{bssids => CurrentBSSIDs}
+    end.
+
+%% Returns true if more than 50% of current BSSIDs are new.
+bssids_changed([], _Prev) -> false;
+bssids_changed(Current, Prev) ->
+    New = length([B || B <- Current, not lists:member(B, Prev)]),
+    New > (length(Current) div 2).

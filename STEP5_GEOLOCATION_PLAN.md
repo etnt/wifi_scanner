@@ -169,13 +169,13 @@ src/apple_wps.erl          - Protobuf schemas + encode/decode + query logic
 src/https_client.erl       - Minimal HTTPS POST client (ssl module)
 ```
 
-## Open Questions
+## Design Decisions
 
-1. **Rate limiting** — Does Apple throttle requests? Should we cache location
-   and only re-query when BSSIDs change significantly?
+1. **Cache location** — Only re-query Apple when the set of visible BSSIDs
+   changes significantly (e.g., >50% new MACs since last query). This avoids
+   unnecessary network traffic and potential rate limiting.
 2. **BSSID format** — Apple expects `"aa:bb:cc:dd:ee:ff"` lowercase with colons.
-   Need to verify how AtomVM's `network:wifi_scan` reports BSSIDs.
-3. **Minimum BSSIDs** — How many BSSIDs are needed for a reliable fix? Typically
-   3+ gives good results.
-4. **Alternative**: Could use Google's Geolocation API instead (also HTTPS, but
-   uses JSON not protobuf — simpler but requires API key).
+   Need to verify how AtomVM's `network:wifi_scan` reports BSSIDs and add a
+   normalization step if needed.
+3. **Minimum BSSIDs** — Require at least 3 BSSIDs before attempting a location
+   query. Fewer than that typically yields poor accuracy.
