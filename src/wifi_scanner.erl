@@ -233,16 +233,29 @@ start_network(Config) ->
 %%%===================================================================
 
 display_ip(Info) ->
-    io:format("wifi_scanner: initializing LCD1602 (SDA=8, SCL=9)~n"),
-    case lcd1602:start(#{sda => 8, scl => 9}) of
-        {ok, LCD} ->
-            IpStr = lists:flatten(format_ip(Info)),
-            lcd1602:clear(LCD),
-            lcd1602:write_string(LCD, 0, 0, "WiFi Scanner"),
-            lcd1602:write_string(LCD, 1, 0, IpStr),
-            io:format("wifi_scanner: LCD showing IP: ~s~n", [IpStr]);
-        {error, Reason} ->
-            io:format("wifi_scanner: LCD init failed: ~p~n", [Reason])
+    {SDA, SCL} = i2c_pins(),
+    io:format("wifi_scanner: initializing LCD1602 (SDA=~p, SCL=~p)~n", [SDA, SCL]),
+    try
+        case lcd1602:start(#{sda => SDA, scl => SCL}) of
+            {ok, LCD} ->
+                IpStr = lists:flatten(format_ip(Info)),
+                lcd1602:clear(LCD),
+                lcd1602:write_string(LCD, 0, 0, "WiFi Scanner"),
+                lcd1602:write_string(LCD, 1, 0, IpStr),
+                io:format("wifi_scanner: LCD showing IP: ~s~n", [IpStr]);
+            {error, Reason} ->
+                io:format("wifi_scanner: LCD init failed: ~p~n", [Reason])
+        end
+    catch
+        _:Error ->
+            io:format("wifi_scanner: LCD error (skipping): ~p~n", [Error])
+    end.
+
+%% Return {SDA, SCL} pins based on platform.
+i2c_pins() ->
+    case atomvm:platform() of
+        esp32 -> {8, 9};
+        pico  -> {4, 5}
     end.
 
 %%%===================================================================
@@ -274,7 +287,16 @@ do_wifi_scan() ->
 %%%===================================================================
 
 %% Only re-query if >50% of BSSIDs are new since last query.
+%% Skip geolocation on Pico W (no TLS support).
 maybe_geolocate(ScanResults, GeoState) ->
+    case atomvm:platform() of
+        pico ->
+            GeoState;
+        _ ->
+            do_geolocate(ScanResults, GeoState)
+    end.
+
+do_geolocate(ScanResults, GeoState) ->
     CurrentBSSIDs = [maps:get(bssid, N) || N <- ScanResults,
                      maps:is_key(bssid, N)],
     PrevBSSIDs = maps:get(bssids, GeoState, []),
