@@ -1,6 +1,6 @@
-# WiFi Scanner — ESP32-S3 + AtomVM
+# WiFi Scanner — ESP32-S3/Pico-W + AtomVM
 
-A WiFi network scanner for ESP32-S3 running on [AtomVM](https://github.com/atomvm/AtomVM).
+A WiFi network scanner for ESP32-S3 or PI Pico-W running on [AtomVM](https://github.com/atomvm/AtomVM).
 Periodically scans for nearby access points, caches results with TTL-based
 eviction, prints to serial console, and serves them as JSON over HTTP.
 Determines device location via Apple's WiFi Positioning System (WPS) using
@@ -10,12 +10,22 @@ An optional LCD display may be used to display the obtained IP address.
 
 ## Prerequisites
 
-Install the `esptool.py` like this:
+### ESP32-S3
+
+Install `esptool.py`:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+```
+
+### Pico W
+
+Install [picotool](https://github.com/raspberrypi/picotool) (v2.x):
+
+```bash
+brew install picotool   # macOS
 ```
 
 ## Configuration
@@ -33,9 +43,19 @@ get_config() ->
     [
         {sta, [{ssid, <<"YOUR_SSID">>}, {psk, <<"YOUR_PASSWORD">>}]},
         {scan_interval, 5000},   %% ms between scans
-        {http_port, 8080}
+        {http_port, 8080},
+        %% Optional: override default I2C pins for LCD
+        %% {i2c_sda, 4},
+        %% {i2c_scl, 5}
     ].
 ```
+
+| Setting        | Default (ESP32) | Default (Pico W) | Description                  |
+|----------------|-----------------|------------------|------------------------------|
+| `scan_interval`| 5000            | 5000             | ms between WiFi scans        |
+| `http_port`    | 8080            | 8080             | HTTP API listen port         |
+| `i2c_sda`      | 8               | 4                | GPIO pin for I2C SDA (LCD)   |
+| `i2c_scl`      | 9               | 5                | GPIO pin for I2C SCL (LCD)   |
 
 The config file is gitignored to keep credentials out of version control.
 
@@ -45,7 +65,15 @@ The config file is gitignored to keep credentials out of version control.
 rebar3 atomvm packbeam
 ```
 
+For the Pico W, also create a UF2 image:
+
+```bash
+rebar3 atomvm uf2create
+```
+
 ## Flash
+
+### ESP32-S3
 
 ```bash
 # Example (your port may differ)
@@ -55,11 +83,39 @@ esptool.py --chip auto --port /dev/cu.usbmodem5B414826621 --baud 115200 \
            _build/default/lib/wifi_scanner.avm
 ```
 
-## Monitor (minicom)
+### Pico W
+
+The Pico W flash is split into three regions. The AtomVM firmware and core
+libs only need to be flashed once (or when AtomVM is rebuilt):
+
+```bash
+# 1. AtomVM firmware (one-time)
+picotool load -f /path/to/AtomVM/src/platforms/rp2/build/src/AtomVM.uf2
+
+# 2. Core libs (one-time)
+picotool load -f /path/to/AtomVM/src/platforms/rp2/build/tests/test_erl_sources/HostAtomVM-prefix/src/HostAtomVM-build/libs/atomvmlib-rp2-pico.uf2
+
+# 3. Application (after each rebuild)
+picotool load -f _build/default/lib/wifi_scanner.uf2
+```
+
+## Monitor
+
+### ESP32-S3 (minicom)
 
 ```bash
 # Example (your port may differ)
 minicom -D /dev/cu.usbmodem5B414826621 -b 115200
+```
+
+### Pico W (serial over USB)
+
+```bash
+# Find the device
+ls /dev/cu.usbmodem*
+
+# Read output (or use minicom)
+minicom -D /dev/cu.usbmodem11101 -b 115200
 ```
 
 Example console output (note the obtained IP address):
@@ -133,12 +189,15 @@ obtained IP address after connecting to WiFi.
 
 ### Wiring
 
-| LCD Module | ESP32-S3 |
-|------------|----------|
-| GND        | GND      |
-| VCC        | 5V       |
-| SDA        | GPIO 8   |
-| SCL        | GPIO 9   |
+| LCD Module | ESP32-S3 | Pico W   |
+|------------|----------|----------|
+| GND        | GND      | GND      |
+| VCC        | 5V       | VBUS (5V)|
+| SDA        | GPIO 8   | GPIO 4   |
+| SCL        | GPIO 9   | GPIO 5   |
+
+These are the default pins. Override with `{i2c_sda, N}` and `{i2c_scl, N}`
+in `wifi_scanner_config.erl` if your wiring differs.
 
 The PCF8574 backpack is at I2C address `0x27`. The contrast can be adjusted
 with the blue potentiometer on the back of the module.
@@ -155,6 +214,8 @@ The device determines its location by querying Apple's WiFi Positioning System
 - Re-queries only when >50% of visible BSSIDs change (i.e. the device has moved)
 - Location (lat/lng/accuracy) is included in the HTTP API response and shown on
   the map in the visualization page
+- **Not available on Pico W** — the RP2 platform lacks TLS support, so
+  geolocation is automatically skipped
 
 The implementation uses:
 - `apple_wps.erl` — protobuf encode/decode + Apple WPS protocol

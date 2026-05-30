@@ -12,4 +12,7 @@ get_config() ->
         ]},
         {scan_interval, 5000},  %% ms between scans
         {http_port, 8080}
+        %% Optional: override default I2C pins for LCD
+        %% {i2c_sda, 4},
+        %% {i2c_scl, 5}
     ].

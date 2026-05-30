@@ -26,17 +26,17 @@ start() ->
     Port = proplists:get_value(http_port, Config, 8080),
     io:format("wifi_scanner: waiting for IP before starting HTTP...~n"),
     %% Wait for IP, then start HTTP and scanner
-    wait_and_start_http(Port, Interval).
+    wait_and_start_http(Port, Interval, Config).
 
 %% Block until DHCP assigns an IP, then bring up HTTP and scanner.
-wait_and_start_http(Port, Interval) ->
+wait_and_start_http(Port, Interval, Config) ->
     receive
         {got_ip, Info} ->
             io:format("wifi_scanner: got IP: ~s~n", [format_ip(Info)]),
             ok = start_http(Port),
             io:format("wifi_scanner: try: curl http://~s:~p/~n", [format_ip(Info), Port]),
             %% Display IP on LCD1602
-            display_ip(Info),
+            display_ip(Info, Config),
             %% Start scanner after HTTP is up
             Pid = spawn(fun() -> scanner_init(Interval) end),
             register(wifi_scanner_proc, Pid),
@@ -44,10 +44,10 @@ wait_and_start_http(Port, Interval) ->
             main_loop(Port);
         sta_connected ->
             io:format("wifi_scanner: STA connected, waiting for DHCP...~n"),
-            wait_and_start_http(Port, Interval);
+            wait_and_start_http(Port, Interval, Config);
         sta_disconnected ->
             io:format("wifi_scanner: STA disconnected, retrying...~n"),
-            wait_and_start_http(Port, Interval)
+            wait_and_start_http(Port, Interval, Config)
     after 30000 ->
         io:format("wifi_scanner: timeout waiting for IP, starting HTTP anyway~n"),
         start_http(Port),
@@ -232,8 +232,8 @@ start_network(Config) ->
 %%% LCD Display — show IP address on LCD1602 via I2C
 %%%===================================================================
 
-display_ip(Info) ->
-    {SDA, SCL} = i2c_pins(),
+display_ip(Info, Config) ->
+    {SDA, SCL} = i2c_pins(Config),
     io:format("wifi_scanner: initializing LCD1602 (SDA=~p, SCL=~p)~n", [SDA, SCL]),
     try
         case lcd1602:start(#{sda => SDA, scl => SCL}) of
@@ -251,12 +251,14 @@ display_ip(Info) ->
             io:format("wifi_scanner: LCD error (skipping): ~p~n", [Error])
     end.
 
-%% Return {SDA, SCL} pins based on platform.
-i2c_pins() ->
-    case atomvm:platform() of
-        esp32 -> {8, 9};
-        pico  -> {4, 5}
-    end.
+%% Return {SDA, SCL} pins from config, falling back to platform defaults.
+i2c_pins(Config) ->
+    Platform = atomvm:platform(),
+    DefaultSDA = case Platform of esp32 -> 8; pico -> 4 end,
+    DefaultSCL = case Platform of esp32 -> 9; pico -> 5 end,
+    SDA = proplists:get_value(i2c_sda, Config, DefaultSDA),
+    SCL = proplists:get_value(i2c_scl, Config, DefaultSCL),
+    {SDA, SCL}.
 
 %%%===================================================================
 %%% Helpers
